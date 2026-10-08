@@ -1,81 +1,44 @@
-local ESX = exports['es_extended']:getSharedObject()
+local TarpObjects = {}
 
-local tarpProps = {}
-
--- Apply tarp to vehicle
-function ApplyTarp(vehicle, vehicleId)
-    if not DoesEntityExist(vehicle) then
+RegisterNetEvent('esx_vehicle:applyTarp', function(entity, vehicleId)
+    if not DoesEntityExist(entity) then
         return
     end
-    
-    local modelHash = GetHashKey(Config.TarpProp)
-    RequestModel(modelHash)
-    
-    while not HasModelLoaded(modelHash) do
+
+    if TarpObjects[vehicleId] and DoesEntityExist(TarpObjects[vehicleId]) then
+        return
+    end
+
+    local propHash = GetHashKey(Config.TarpProp)
+    RequestModel(propHash)
+    while not HasModelLoaded(propHash) do
         Wait(10)
     end
-    
-    local tarpProp = CreateObject(modelHash, GetEntityCoords(vehicle), false, false, true)
-    
-    if tarpProp ~= 0 then
-        AttachEntityToEntity(
-            tarpProp,
-            vehicle,
-            GetEntityBoneIndexByName(vehicle, 'chassis'),
-            Config.TarpAttachOffset.x,
-            Config.TarpAttachOffset.y,
-            Config.TarpAttachOffset.z,
-            0.0, 0.0, 0.0,
-            false, false, false, false, 2, true
-        )
-        
-        tarpProps[vehicleId] = tarpProp
-        
-        -- Update vehicle data
-        for _, v in ipairs(PlayerVehicles) do
-            if v.id == vehicleId then
-                v.tarp = 1
+
+    local obj = CreateObject(propHash, GetEntityCoords(entity), false, false, false)
+    if obj and obj ~= 0 then
+        AttachEntityToEntity(obj, entity, 0, 0.0, 0.0, 1.1, 0.0, 0.0, 0.0, false, false, false, false, 2, true)
+        TarpObjects[vehicleId] = obj
+
+        for _, data in ipairs(PlayerVehicles) do
+            if data.id == vehicleId then
+                data.tarp = 1
                 break
             end
         end
-        
-        TriggerEvent('chat:addMessage', {
-            args = { 'Vehicle', TW[Config.Locale].success.tarp_applied }
-        })
     end
-    
-    ReleaseModelAndFreeMem(modelHash)
-end
+end)
 
--- Remove tarp from vehicle
-function RemoveTarp(vehicle, vehicleId)
-    if tarpProps[vehicleId] and DoesEntityExist(tarpProps[vehicleId]) then
-        DeleteEntity(tarpProps[vehicleId])
-        tarpProps[vehicleId] = nil
-        
-        -- Update vehicle data
-        for _, v in ipairs(PlayerVehicles) do
-            if v.id == vehicleId then
-                v.tarp = 0
+RegisterNetEvent('esx_vehicle:removeTarp', function(entity, vehicleId)
+    if TarpObjects[vehicleId] and DoesEntityExist(TarpObjects[vehicleId]) then
+        DeleteEntity(TarpObjects[vehicleId])
+        TarpObjects[vehicleId] = nil
+
+        for _, data in ipairs(PlayerVehicles) do
+            if data.id == vehicleId then
+                data.tarp = 0
                 break
             end
         end
-        
-        TriggerEvent('chat:addMessage', {
-            args = { 'Vehicle', TW[Config.Locale].success.tarp_removed }
-        })
     end
-end
-
--- Reattach tarps on vehicle spawn
-SetInterval(function()
-    if PlayerVehicles then
-        for _, vehicle in ipairs(PlayerVehicles) do
-            if vehicle.tarp == 1 and vehicle.entity and DoesEntityExist(vehicle.entity) then
-                if not tarpProps[vehicle.id] or not DoesEntityExist(tarpProps[vehicle.id]) then
-                    ApplyTarp(vehicle.entity, vehicle.id)
-                end
-            end
-        end
-    end
-end, 5000)
+end)

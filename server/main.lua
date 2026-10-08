@@ -1,58 +1,5 @@
 local ESX = exports['es_extended']:getSharedObject()
 
-TW = {}
-
--- Load player vehicles on join
-AddEventHandler('esx:playerLoaded', function(playerId)
-    local xPlayer = ESX.GetPlayerFromId(playerId)
-    if xPlayer then
-        TriggerClientEvent('esx_vehicle:loadPlayerVehicles', playerId, xPlayer.identifier)
-    end
-end)
-
--- Clean up vehicles on disconnect
-AddEventHandler('playerDropped', function(reason)
-    local playerId = source
-    TriggerClientEvent('esx_vehicle:removePlayerVehicles', playerId)
-end)
-
--- Get player vehicles from database
-function GetPlayerVehicles(identifier)
-    local vehicles = {}
-    local result = MySQL.query.await('SELECT * FROM ' .. Config.VehicleTable .. ' WHERE owner = ?', { identifier })
-    
-    if result and #result > 0 then
-        vehicles = result
-    end
-    
-    return vehicles
-end
-
--- Get vehicle data
-function GetVehicleData(vehicleId)
-    local result = MySQL.query.await('SELECT * FROM ' .. Config.VehicleTable .. ' WHERE id = ?', { vehicleId })
-    if result and result[1] then
-        return result[1]
-    end
-    return nil
-end
-
--- Save vehicle data
-function SaveVehicleData(vehicleData)
-    if vehicleData.id then
-        MySQL.update.await('UPDATE ' .. Config.VehicleTable .. ' SET state = ?, vehicle_props = ?, fuel = ?, engine = ?, body = ?, tarp = ? WHERE id = ?', {
-            json.encode(vehicleData.state),
-            json.encode(vehicleData.vehicle_props),
-            vehicleData.fuel,
-            vehicleData.engine,
-            vehicleData.body,
-            vehicleData.tarp,
-            vehicleData.id
-        })
-    end
-end
-
--- Generate random plate
 function GeneratePlate()
     local plate = ''
     for i = 1, 8 do
@@ -66,8 +13,52 @@ function GeneratePlate()
     return plate
 end
 
--- Export functions
-exports('GetPlayerVehicles', GetPlayerVehicles)
-exports('GetVehicleData', GetVehicleData)
-exports('SaveVehicleData', SaveVehicleData)
-exports('GeneratePlate', GeneratePlate)
+function GetOwnedVehiclesByOwner(owner)
+    local rows = MySQL.query.await('SELECT * FROM ' .. Config.VehicleTable .. ' WHERE owner = ?', { owner })
+    if not rows then
+        return {}
+    end
+    return rows
+end
+
+function SaveVehicleState(vehicleId, payload)
+    if not vehicleId or not payload then
+        return false
+    end
+
+    local result = MySQL.update.await(
+        'UPDATE ' .. Config.VehicleTable .. ' SET state = ?, vehicle_props = ?, fuel = ?, engine = ?, body = ?, tarp = ? WHERE id = ?',
+        {
+            json.encode(payload.state or {}),
+            json.encode(payload.vehicle_props or {}),
+            payload.fuel or 100,
+            payload.engine or 1000.0,
+            payload.body or 1000.0,
+            payload.tarp or 0,
+            vehicleId
+        }
+    )
+
+    return result ~= nil
+end
+
+ESX.RegisterServerCallback('esx_vehicle:getOwnedVehicles', function(source, cb, identifier)
+    local rows = GetOwnedVehiclesByOwner(identifier)
+    cb(rows or {})
+end)
+
+ESX.RegisterServerCallback('esx_vehicle:saveVehicleState', function(source, cb, vehicleId, payload)
+    local xPlayer = ESX.GetPlayerFromId(source)
+    if not xPlayer then
+        cb(false)
+        return
+    end
+
+    local rows = MySQL.query.await('SELECT * FROM ' .. Config.VehicleTable .. ' WHERE id = ? AND owner = ?', { vehicleId, xPlayer.identifier })
+    if not rows or #rows == 0 then
+        cb(false)
+        return
+    end
+
+    cb(SaveVehicleState(vehicleId, payload))
+end)

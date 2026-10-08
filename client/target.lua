@@ -1,59 +1,87 @@
 local ESX = exports['es_extended']:getSharedObject()
 
--- Add ox_target options to vehicles
-AddEventHandler('esx:playerLoaded', function()
-    Wait(1000)
-    UpdateVehicleTargets()
-end)
+local PlayerVehicles = {}
 
-RegisterNetEvent('esx_vehicle:loadPlayerVehicles', function()
-    Wait(500)
-    UpdateVehicleTargets()
-end)
-
-function UpdateVehicleTargets()
-    if PlayerVehicles and #PlayerVehicles > 0 then
-        for _, vehicle in ipairs(PlayerVehicles) do
-            if vehicle.entity and DoesEntityExist(vehicle.entity) then
-                AddVehicleTargets(vehicle.entity, vehicle.id)
-            end
-        end
-    end
-end
-
-function AddVehicleTargets(vehicle, vehicleId)
-    -- Apply tarp option
-    exports.ox_target:addEntity(vehicle, {
+RegisterNetEvent('esx_vehicle:registerTarget', function(entity, data)
+    local options = {
         {
             label = TW[Config.Locale].target.apply_tarp,
-            icon = 'fa-solid fa-sheet',
+            icon = 'fa-solid fa-sheet-plastic',
             distance = Config.TargetDistance,
             onSelect = function()
-                ApplyTarp(vehicle, vehicleId)
+                TriggerEvent('esx_vehicle:applyTarp', entity, data.id)
             end,
             canInteract = function()
-                return not IsVehicleTarpApplied(vehicle)
+                return data.tarp == 0
             end
         },
         {
             label = TW[Config.Locale].target.remove_tarp,
-            icon = 'fa-solid fa-sheet',
+            icon = 'fa-solid fa-sheet-plastic',
             distance = Config.TargetDistance,
             onSelect = function()
-                RemoveTarp(vehicle, vehicleId)
+                TriggerEvent('esx_vehicle:removeTarp', entity, data.id)
             end,
             canInteract = function()
-                return IsVehicleTarpApplied(vehicle)
+                return data.tarp == 1
             end
         }
-    })
-end
+    }
 
-function IsVehicleTarpApplied(vehicle)
-    for _, vehicle_ in ipairs(PlayerVehicles) do
-        if vehicle_.entity == vehicle then
-            return vehicle_.tarp == 1
+    exports.ox_target:addLocalEntity(entity, options)
+end)
+
+RegisterNetEvent('esx_vehicle:loadPlayerVehicles', function(identifier)
+    ESX.TriggerServerCallback('esx_vehicle:getOwnedVehicles', function(rows)
+        for _, vehicle in ipairs(PlayerVehicles) do
+            if vehicle.entity and DoesEntityExist(vehicle.entity) then
+                DeleteEntity(vehicle.entity)
+            end
         end
+        PlayerVehicles = {}
+
+        if not rows then
+            return
+        end
+
+        for _, row in ipairs(rows) do
+            local state = json.decode(row.state or '{}')
+            local props = json.decode(row.vehicle_props or '{}')
+
+            if state.x and state.y and state.z then
+                local modelHash = GetHashKey(props.model or 'sultan')
+                RequestModel(modelHash)
+                while not HasModelLoaded(modelHash) do
+                    Wait(10)
+                end
+
+                local veh = CreateVehicle(modelHash, state.x, state.y, state.z, state.heading or 0.0, true, false)
+                if veh and veh ~= 0 then
+                    SetVehicleNumberPlateText(veh, row.plate)
+                    SetVehicleFuelLevel(veh, tonumber(row.fuel or 100))
+                    SetVehicleEngineHealth(veh, tonumber(row.engine or 1000.0))
+                    SetVehicleBodyHealth(veh, tonumber(row.body or 1000.0))
+
+                    table.insert(PlayerVehicles, {
+                        id = row.id,
+                        entity = veh,
+                        tarp = tonumber(row.tarp or 0),
+                        model = props.model,
+                        plate = row.plate,
+                        owner = row.owner
+                    })
+
+                    TriggerEvent('esx_vehicle:registerTarget', veh, PlayerVehicles[#PlayerVehicles])
+                end
+            end
+        end
+    end, identifier)
+end)
+
+RegisterNetEvent('esx:playerLoaded', function()
+    Wait(1000)
+    local xPlayer = ESX.GetPlayerData()
+    if xPlayer and xPlayer.identifier then
+        TriggerEvent('esx_vehicle:loadPlayerVehicles', xPlayer.identifier)
     end
-    return false
-end
+end)

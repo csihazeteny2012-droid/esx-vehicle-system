@@ -8,7 +8,7 @@ RegisterCommand('givecar', function(source, args)
 
     if xPlayer.getGroup() ~= 'admin' and xPlayer.getGroup() ~= 'superadmin' then
         TriggerClientEvent('chat:addMessage', source, {
-            args = {'ERROR', 'Nincs jogosultságod ehhez a parancshoz!'}
+            args = {'ERROR', 'Nincs jogosults��god ehhez a parancshoz!'}
         })
         return
     end
@@ -53,49 +53,41 @@ RegisterCommand('givecar', function(source, args)
         return
     end
 
-    local existingVehicles = MySQL.query.await('SELECT * FROM ' .. Config.VehicleTable .. ' WHERE owner = ?', { targetPlayer.identifier })
-    if existingVehicles then
-        for _, vehicle in ipairs(existingVehicles) do
-            local props = json.decode(vehicle.vehicle_props or '{}')
-            if props.model and string.lower(tostring(props.model)) == vehicleModel then
-                TriggerClientEvent('chat:addMessage', source, {
-                    args = {'ERROR', 'Ez a játékos már rendelkezik ezzel a járművel!'}
-                })
-                return
-            end
+    local ownedVehicles = GetOwnedVehiclesByOwner(targetPlayer.identifier)
+    for _, vehicle in ipairs(ownedVehicles) do
+        local props = json.decode(vehicle.vehicle_props or '{}')
+        if props.model and string.lower(tostring(props.model)) == vehicleModel then
+            TriggerClientEvent('chat:addMessage', source, {
+                args = {'ERROR', 'Ez a játékos már rendelkezik ezzel a járművel!'}
+            })
+            return
         end
     end
 
-    local plate = ''
-    for i = 1, 8 do
-        local randType = math.random(0, 1)
-        if randType == 0 then
-            plate = plate .. string.char(math.random(65, 90))
-        else
-            plate = plate .. tostring(math.random(0, 9))
-        end
-    end
-
-    local vehicleProps = {
+    local plate = GeneratePlate()
+    local props = {
         model = vehicleModel,
         plate = plate,
-        label = vehicleModel,
+        label = vehicleModel
     }
 
-    local insertId = MySQL.insert.await('INSERT INTO ' .. Config.VehicleTable .. ' (owner, plate, vehicle_props, state, fuel, engine, body, tarp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', {
-        targetPlayer.identifier,
-        plate,
-        json.encode(vehicleProps),
-        json.encode({}),
-        100,
-        1000.0,
-        1000.0,
-        0
-    })
+    local insertId = MySQL.insert.await(
+        'INSERT INTO ' .. Config.VehicleTable .. ' (owner, plate, vehicle_props, state, fuel, engine, body, tarp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        {
+            targetPlayer.identifier,
+            plate,
+            json.encode(props),
+            json.encode({}),
+            100,
+            1000.0,
+            1000.0,
+            0
+        }
+    )
 
     if insertId then
         TriggerClientEvent('chat:addMessage', source, {
-            args = {'Vehicle System', 'Jármű sikeresen megadva ' .. targetPlayer.getName() .. '-nak/nek! (Plate: ' .. plate .. ')'}
+            args = {'Vehicle System', string.format('Jármű sikeresen megadva %s-nak/nek! (Plate: %s)', targetPlayer.getName(), plate)}
         })
         TriggerClientEvent('chat:addMessage', targetPlayerId, {
             args = {'Vehicle System', 'Új ' .. vehicleModel .. ' járművet kaptál! Rendszám: ' .. plate}

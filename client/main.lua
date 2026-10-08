@@ -1,128 +1,121 @@
 local ESX = exports['es_extended']:getSharedObject()
 
 local PlayerVehicles = {}
-local spawnedVehicles = {}
 
--- Load player vehicles
-RegisterNetEvent('esx_vehicle:loadPlayerVehicles', function(identifier)
-    ESX.TriggerServerCallback('esx_vehicle:getPlayerVehicles', function(vehicles)
-        PlayerVehicles = vehicles
-        
-        -- Spawn all vehicles
-        for _, vehicle in ipairs(vehicles) do
-            SpawnPlayerVehicle(vehicle)
-        end
-    end, identifier)
-end)
-
--- Remove player vehicles on disconnect
-RegisterNetEvent('esx_vehicle:removePlayerVehicles', function()
-    for _, vehicleEntity in ipairs(spawnedVehicles) do
-        if DoesEntityExist(vehicleEntity) then
-            DeleteEntity(vehicleEntity)
-        end
+local function deleteVehicleIfExists(vehicle)
+    if vehicle and DoesEntityExist(vehicle) then
+        DeleteEntity(vehicle)
     end
-    spawnedVehicles = {}
-end)
+end
 
--- Spawn a vehicle
-function SpawnPlayerVehicle(vehicleData)
-    if not vehicleData.state or vehicleData.state == '{}' then
-        return
-    end
-    
-    local state = json.decode(vehicleData.state)
+local function spawnVehicleForPlayer(record)
+    local state = json.decode(record.state or '{}')
+    local props = json.decode(record.vehicle_props or '{}')
+
     if not state.x or not state.y or not state.z then
-        return
+        return nil
     end
-    
-    local modelHash = GetHashKey(vehicleData.vehicle_props and json.decode(vehicleData.vehicle_props).model or 'adder')
-    
+
+    local model = props.model or 'sultan'
+    local modelHash = GetHashKey(model)
     RequestModel(modelHash)
     while not HasModelLoaded(modelHash) do
         Wait(10)
     end
-    
-    local vehicle = CreateVehicle(modelHash, state.x, state.y, state.z, state.heading or 0.0, true, false)
-    
-    if vehicle == 0 then
-        print('Failed to spawn vehicle ' .. vehicleData.id)
-        return
+
+    local veh = CreateVehicle(modelHash, state.x, state.y, state.z, state.heading or 0.0, true, false)
+    if not veh or veh == 0 then
+        return nil
     end
-    
-    -- Apply vehicle props
-    if vehicleData.vehicle_props and vehicleData.vehicle_props ~= '{}' then
-        local props = json.decode(vehicleData.vehicle_props)
-        if props.plate then
-            SetVehicleNumberPlateText(vehicle, props.plate)
-        end
-        if props.color1 then
-            SetVehicleColours(vehicle, props.color1, props.color2 or 0)
-        end
-        if props.modelsVariations then
-            ApplyVehicleCustomization(vehicle, props.modelsVariations)
-        end
-    end
-    
-    -- Set fuel, engine, body damage
-    if vehicleData.fuel then
-        SetVehicleFuelLevel(vehicle, vehicleData.fuel)
-    end
-    if vehicleData.engine then
-        SetVehicleEngineHealth(vehicle, vehicleData.engine)
-    end
-    if vehicleData.body then
-        SetVehicleBodyHealth(vehicle, vehicleData.body)
-    end
-    
-    table.insert(spawnedVehicles, vehicle)
-    vehicleData.entity = vehicle
-    
-    -- Attach tarp if needed
-    if vehicleData.tarp == 1 then
-        AttachTarp(vehicle, vehicleData.id)
-    end
+
+    SetVehicleNumberPlateText(veh, record.plate)
+    SetVehicleFuelLevel(veh, tonumber(record.fuel or 100))
+    SetVehicleEngineHealth(veh, tonumber(record.engine or 1000.0))
+    SetVehicleBodyHealth(veh, tonumber(record.body or 1000.0))
+
+    return {
+        id = record.id,
+        entity = veh,
+        tarp = tonumber(record.tarp or 0),
+        model = model,
+        plate = record.plate,
+        owner = record.owner
+    }
 end
 
--- Apply vehicle customization
-function ApplyVehicleCustomization(vehicle, mods)
-    if mods then
-        for modType, modValue in pairs(mods) do
-            SetVehicleMod(vehicle, tonumber(modType) or 0, tonumber(modValue) or -1)
+local function refreshPlayerVehicles(identifier)
+    ESX.TriggerServerCallback('esx_vehicle:getOwnedVehicles', function(rows)
+        for _, old in ipairs(PlayerVehicles) do
+            deleteVehicleIfExists(old.entity)
         end
-    end
+        PlayerVehicles = {}
+
+        if not rows then
+            return
+        end
+
+        for _, row in ipairs(rows) do
+            local spawned = spawnVehicleForPlayer(row)
+            if spawned then
+                table.insert(PlayerVehicles, spawned)
+                TriggerEvent('esx_vehicle:registerTarget', spawned.entity, spawned)
+            end
+        end
+    end, identifier)
 end
 
--- Get vehicle entity from ID
-function GetVehicleFromId(vehicleId)
-    for _, vehicle in ipairs(PlayerVehicles) do
-        if vehicle.id == vehicleId and vehicle.entity and DoesEntityExist(vehicle.entity) then
-            return vehicle.entity
-        end
+RegisterNetEvent('esx:playerLoaded', function()
+    Wait(1000)
+    local xPlayer = ESX.GetPlayerData()
+    if xPlayer and xPlayer.identifier then
+        refreshPlayerVehicles(xPlayer.identifier)
     end
-    return nil
-end
+end)
 
--- Save all vehicles periodically
-SetInterval(function()
-    for _, vehicle in ipairs(PlayerVehicles) do
-        if vehicle.entity and DoesEntityExist(vehicle.entity) then
-            local coords = GetEntityCoords(vehicle.entity)
-            vehicle.state = json.encode({
-                x = coords.x,
-                y = coords.y,
-                z = coords.z,
-                heading = GetEntityHeading(vehicle.entity)
-            })
-            vehicle.fuel = math.max(0, GetVehicleFuelLevel(vehicle.entity))
-            vehicle.engine = GetVehicleEngineHealth(vehicle.entity)
-            vehicle.body = GetVehicleBodyHealth(vehicle.entity)
-            
+RegisterNetEvent('esx_vehicle:loadPlayerVehicles', function(identifier)
+    refreshPlayerVehicles(identifier)
+end)
+
+RegisterNetEvent('esx_vehicle:saveAllVehicles', function()
+    for _, data in ipairs(PlayerVehicles) do
+        if DoesEntityExist(data.entity) then
+            local coords = GetEntityCoords(data.entity)
+            local payload = {
+                state = {
+                    x = coords.x,
+                    y = coords.y,
+                    z = coords.z,
+                    heading = GetEntityHeading(data.entity)
+                },
+                vehicle_props = {
+                    model = data.model,
+                    plate = data.plate,
+                    label = data.model
+                },
+                fuel = GetVehicleFuelLevel(data.entity),
+                engine = GetVehicleEngineHealth(data.entity),
+                body = GetVehicleBodyHealth(data.entity),
+                tarp = data.tarp or 0
+            }
+
             ESX.TriggerServerCallback('esx_vehicle:saveVehicleState', function(success)
-                if not success then
-                    print('Failed to save vehicle ' .. vehicle.id)
-                end
-            end, vehicle.id, vehicle)
+            end, data.id, payload)
         end
     end
-end, 30000) -- Save every 30 seconds
+end)
+
+CreateThread(function()
+    while true do
+        Wait(Config.SaveTimer)
+        TriggerEvent('esx_vehicle:saveAllVehicles')
+    end
+end)
+
+RegisterNetEvent('playerDropped', function()
+    for _, vehicle in ipairs(PlayerVehicles) do
+        if DoesEntityExist(vehicle.entity) then
+            DeleteEntity(vehicle.entity)
+        end
+    end
+    PlayerVehicles = {}
+end)
