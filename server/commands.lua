@@ -3,11 +3,13 @@ local ESX = exports['es_extended']:getSharedObject()
 -- /givecar command - Give vehicle to player
 ESX.RegisterCommand('givecar', 'admin', function(xPlayer, args, showError)
     local targetPlayerId = tonumber(args[1])
-    local vehicleModel = string.lower(args[2])
+    local vehicleModel = args[2]
     
-    if not targetPlayerId then
-        return showError(TW[Config.Locale].error.invalid_player)
+    if not targetPlayerId or not vehicleModel then
+        return showError('Usage: /givecar <playerId> <vehicleModel>')
     end
+    
+    vehicleModel = string.lower(vehicleModel)
     
     local targetPlayer = ESX.GetPlayerFromId(targetPlayerId)
     if not targetPlayer then
@@ -55,7 +57,7 @@ ESX.RegisterCommand('givecar', 'admin', function(xPlayer, args, showError)
     TriggerClientEvent('chat:addMessage', xPlayer.source, {
         args = { 'Vehicle System', string.format(TW[Config.Locale].success.vehicle_given, targetPlayer.getName()) }
     })
-end, true, { help = 'Give a vehicle to a player', validate = true, arguments = {
+end, true, { help = 'Give a vehicle to a player', validate = false, arguments = {
     { name = 'playerId', help = 'Player ID' },
     { name = 'vehicleModel', help = 'Vehicle model' }
 }})
