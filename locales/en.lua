@@ -1,3 +1,5 @@
+TW = TW or {}
+
 local Translations = {
     error = {
         no_permission = 'You do not have permission for this command!',
