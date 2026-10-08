@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS `owned_vehicles` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `owner` varchar(50) NOT NULL,
-  `plate` varchar(10) NOT NULL UNIQUE,
+  `plate` varchar(10) NOT NULL,
   `vehicle_props` longtext NOT NULL,
   `state` longtext NOT NULL,
   `fuel` float NOT NULL DEFAULT 100,
@@ -14,3 +14,14 @@ CREATE TABLE IF NOT EXISTS `owned_vehicles` (
   UNIQUE KEY `unique_plate` (`plate`),
   KEY `owner_index` (`owner`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `owned_vehicles`
+  ADD COLUMN IF NOT EXISTS `vehicle_props` longtext NOT NULL AFTER `plate`,
+  ADD COLUMN IF NOT EXISTS `state` longtext NOT NULL AFTER `vehicle_props`,
+  ADD COLUMN IF NOT EXISTS `fuel` float NOT NULL DEFAULT 100 AFTER `state`,
+  ADD COLUMN IF NOT EXISTS `engine` float NOT NULL DEFAULT 1000.0 AFTER `fuel`,
+  ADD COLUMN IF NOT EXISTS `body` float NOT NULL DEFAULT 1000.0 AFTER `engine`,
+  ADD COLUMN IF NOT EXISTS `tarp` int(1) NOT NULL DEFAULT 0 AFTER `body`;
+
+ALTER TABLE `owned_vehicles`
+  ADD UNIQUE INDEX `unique_plate` (`plate`);
