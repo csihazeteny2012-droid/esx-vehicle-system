@@ -4,7 +4,7 @@ game 'gta5'
 lua54 'yes'
 
 author 'SeeRPG Vehicle System'
-description 'Persistent ESX vehicle system with tarp + ox_target'
+description 'Persistent ESX vehicle system with tarp + ox_target + simple garage'
 version '1.0.0'
 
 shared_scripts {
@@ -17,13 +17,15 @@ shared_scripts {
 server_scripts {
     '@oxmysql/lib/MySQL.lua',
     'server/main.lua',
-    'server/commands.lua'
+    'server/commands.lua',
+    'server/garage.lua'
 }
 
 client_scripts {
     'client/main.lua',
     'client/target.lua',
-    'client/tarp.lua'
+    'client/tarp.lua',
+    'client/garage.lua'
 }
 
 dependencies {
